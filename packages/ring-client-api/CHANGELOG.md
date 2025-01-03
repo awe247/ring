@@ -1,5 +1,73 @@
 # ring-client-api
 
+## 13.2.1
+
+### Patch Changes
+
+- [#1532](https://github.com/dgreif/ring/pull/1532) [`209f13e`](https://github.com/dgreif/ring/commit/209f13ead4707dad6e478578a81d6623b0642776) Thanks [@tsightler](https://github.com/tsightler)! - Increase keepalive and adjust connection pooling, which will hopefully result in more stable fetch requests
+
+- [`a480048`](https://github.com/dgreif/ring/commit/a480048f4a4adca1cac9516bf2b2c1be62a59868) Thanks [@tsightler](https://github.com/tsightler)! - Handle errors when connecting to push notification service
+
+## 13.2.0
+
+### Minor Changes
+
+- [`2df3073`](https://github.com/dgreif/ring/commit/2df307381f020bf494f7e436b3d1cb0bc6748a37) Thanks [@dgreif](https://github.com/dgreif)! - Add support for Node 22
+
+- [`abd5e98`](https://github.com/dgreif/ring/commit/abd5e9880df08bcd2f3ed27b3c1c0b679e74f12a) Thanks [@dgreif](https://github.com/dgreif)! - Updated build target from ES2021 to ES2022. ES2022 is fully supported by Node 18, which is the current minimum supported version.
+
+### Patch Changes
+
+- [`cef247b`](https://github.com/dgreif/ring/commit/cef247b947a52384a592ff9574340c3c6c2c5616) Thanks [@dgreif](https://github.com/dgreif)! - Update dependencies
+
+- [`b73687b`](https://github.com/dgreif/ring/commit/b73687be34260be7bf4cf00ebc9b7f19fb3957bd) Thanks [@dgreif](https://github.com/dgreif)! - Ignore unused camera messages
+
+- [`d0baee3`](https://github.com/dgreif/ring/commit/d0baee3250d5ec1b82c84286688b71c60b7a5639) Thanks [@dgreif](https://github.com/dgreif)! - Update dependencies
+
+- [`2afef6f`](https://github.com/dgreif/ring/commit/2afef6f923db39f6392ca460be99d6702c0b1a07) Thanks [@dgreif](https://github.com/dgreif)! - Use `provenance` when publishing to npm
+
+- [`306f76d`](https://github.com/dgreif/ring/commit/306f76d6fd2eef1831330e04792a244a51a2fb86) Thanks [@dgreif](https://github.com/dgreif)! - Updated dependencies
+
+- [`1fe3043`](https://github.com/dgreif/ring/commit/1fe30435520c1f0c3aed526e8117da2031ce2760) Thanks [@tsightler](https://github.com/tsightler)! - Improve fetch error messages
+
+- [`f97c496`](https://github.com/dgreif/ring/commit/f97c496f8334475a3db729761609a2d313aaf5e5) Thanks [@dgreif](https://github.com/dgreif)! - Use beta version of @homebridge/camera-utils, which includes an updated version of ffmpeg
+
+## 13.1.0
+
+### Minor Changes
+
+- [`1a1ee4b`](https://github.com/dgreif/ring/commit/1a1ee4b7fe44ead78577ff22d2d13b9133c9737b) Thanks [@dgreif](https://github.com/dgreif)! - Add support for water valves. Note, these have not been tested extensively so please let us know if you run into issues.
+
+### Patch Changes
+
+- [`2f5d646`](https://github.com/dgreif/ring/commit/2f5d646471abcae2e20a3929aab44e292e67d9ab) Thanks [@dgreif](https://github.com/dgreif)! - Update dependencies
+
+## 13.0.1
+
+### Patch Changes
+
+- [`cf08a3e`](https://github.com/dgreif/ring/commit/cf08a3e07b5e550bcddfc789fbaa72050a4a0311) Thanks [@dgreif](https://github.com/dgreif)! - Update push-receiver, which should lead to more reliable push notification handling
+
+## 13.0.0
+
+### Major Changes
+
+- [`cc2f0b7`](https://github.com/dgreif/ring/commit/cc2f0b743a5927e1a9e4c5797ee6bc08bef9ffe7) Thanks [@tsightler](https://github.com/tsightler)! - Updated to new push notification interface. This will change the shape of push notifications for projects which manually consume push notifications, but should not impact homebridge-ring users. If your push notifications for cameras (motion events, dings, etc) do not work after updating, please reboot and try again, then see https://github.com/dgreif/ring/wiki/Notification-Troubleshooting if issues continue.
+
+### Minor Changes
+
+- [`36461a1`](https://github.com/dgreif/ring/commit/36461a10719a044a42284d92ab7ea87623ff8e99) Thanks [@dgreif](https://github.com/dgreif)! - Switched to using the native version of `fetch` from Node.js. This allows us to remove `got` as a dependency. This will break any users on Node 16 or older, though those versions have not been officially supported for some time.
+
+### Patch Changes
+
+- [`dd78e50`](https://github.com/dgreif/ring/commit/dd78e503670743d6d836868742a0b724edf75113) Thanks [@dgreif](https://github.com/dgreif)! - Updated dependencies
+
+## 12.1.1
+
+### Patch Changes
+
+- [#1433](https://github.com/dgreif/ring/pull/1433) [`d3fe3de`](https://github.com/dgreif/ring/commit/d3fe3dea334dd271ef8862ef8e1e0130f68cf38a) Thanks [@tsightler](https://github.com/tsightler)! - Update app API endpoint to fix socket connection issues
+
 ## 12.1.0
 
 ### Minor Changes

@@ -1,20 +1,17 @@
-import { hap } from './hap'
-import { RingPlatformConfig } from './config'
+import { hap } from './hap.ts'
+import type { RingPlatformConfig } from './config.ts'
 import type { RingCamera } from 'ring-client-api'
-import { BaseDataAccessory } from './base-data-accessory'
-import { filter, map, mapTo, switchMap, throttleTime } from 'rxjs/operators'
-import { CameraSource } from './camera-source'
-import { PlatformAccessory } from 'homebridge'
-import { TargetValueTimer } from './target-value-timer'
+import { BaseDataAccessory } from './base-data-accessory.ts'
+import { filter, map, switchMap, throttleTime } from 'rxjs/operators'
+import { CameraSource } from './camera-source.ts'
+import type { PlatformAccessory } from 'homebridge'
+import { TargetValueTimer } from './target-value-timer.ts'
 import { delay, logError, logInfo } from 'ring-client-api/util'
 import { firstValueFrom } from 'rxjs'
 
 export class Camera extends BaseDataAccessory<RingCamera> {
   private inHomeDoorbellStatus: boolean | undefined
-  private cameraSource = new CameraSource(
-    this.device,
-    this.config.unbridgeCameras,
-  )
+  private cameraSource
 
   constructor(
     public readonly device: RingCamera,
@@ -22,6 +19,11 @@ export class Camera extends BaseDataAccessory<RingCamera> {
     public readonly config: RingPlatformConfig,
   ) {
     super()
+
+    this.cameraSource = new CameraSource(
+      this.device,
+      this.config.unbridgeCameras,
+    )
 
     if (!hap.CameraController) {
       const error =
@@ -83,7 +85,7 @@ export class Camera extends BaseDataAccessory<RingCamera> {
           characteristicType: Characteristic.ProgrammableSwitchEvent,
           serviceType: Service.StatelessProgrammableSwitch,
           onValue: device.onDoorbellPressed.pipe(
-            mapTo(Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS),
+            map(() => Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS),
           ),
         })
 
@@ -179,7 +181,7 @@ export class Camera extends BaseDataAccessory<RingCamera> {
     if (device.hasBattery) {
       this.registerCharacteristic({
         characteristicType: Characteristic.StatusLowBattery,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         getValue: () => {
           return device.hasLowBattery
             ? StatusLowBattery.BATTERY_LEVEL_LOW
@@ -189,7 +191,7 @@ export class Camera extends BaseDataAccessory<RingCamera> {
 
       this.registerCharacteristic({
         characteristicType: Characteristic.ChargingState,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         getValue: () => {
           return device.isCharging
             ? ChargingState.CHARGING
@@ -199,7 +201,7 @@ export class Camera extends BaseDataAccessory<RingCamera> {
 
       this.registerObservableCharacteristic({
         characteristicType: Characteristic.BatteryLevel,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         onValue: device.onBatteryLevel.pipe(
           map((batteryLevel) => {
             return batteryLevel === null ? 100 : batteryLevel
@@ -224,7 +226,7 @@ export class Camera extends BaseDataAccessory<RingCamera> {
       await Promise.race([
         firstValueFrom(
           this.device.onNewNotification.pipe(
-            filter((notification) => Boolean(notification.ding.image_uuid)),
+            filter((notification) => Boolean(notification.img?.snapshot_uuid)),
           ),
         ),
         // wait up to 2 seconds for the second notification
@@ -246,7 +248,7 @@ export class Camera extends BaseDataAccessory<RingCamera> {
 
     try {
       await this.cameraSource.loadSnapshot(imageUuid)
-    } catch (e) {
+    } catch {
       logInfo(
         this.device.name +
           ' Failed to load snapshot.  Sending event to HomeKit without new snapshot',

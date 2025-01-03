@@ -1,12 +1,7 @@
-import {
-  clientApi,
-  deviceApi,
-  RefreshTokenAuth,
-  RingRestClient,
-  SessionOptions,
-} from './rest-client'
-import { Location } from './location'
-import {
+import type { RefreshTokenAuth, SessionOptions } from './rest-client.ts'
+import { clientApi, deviceApi, RingRestClient } from './rest-client.ts'
+import { Location } from './location.ts'
+import type {
   BaseStation,
   BeamBridge,
   CameraData,
@@ -15,13 +10,14 @@ import {
   OnvifCameraData,
   ProfileResponse,
   PushNotification,
-  RingDeviceType,
   ThirdPartyGarageDoorOpener,
   UnknownDevice,
   UserLocation,
-} from './ring-types'
-import { AnyCameraData, RingCamera } from './ring-camera'
-import { RingChime } from './ring-chime'
+} from './ring-types.ts'
+import { PushNotificationAction, RingDeviceType } from './ring-types.ts'
+import type { AnyCameraData } from './ring-camera.ts'
+import { RingCamera } from './ring-camera.ts'
+import { RingChime } from './ring-chime.ts'
 import { combineLatest, EMPTY, merge, Subject } from 'rxjs'
 import {
   debounceTime,
@@ -29,11 +25,17 @@ import {
   switchMap,
   throttleTime,
 } from 'rxjs/operators'
-import { clearTimeouts, enableDebug, logError, logInfo } from './util'
-import { setFfmpegPath } from './ffmpeg'
-import { Subscribed } from './subscribed'
-import PushReceiver from '@eneris/push-receiver'
-import { RingIntercom } from './ring-intercom'
+import {
+  clearTimeouts,
+  enableDebug,
+  logDebug,
+  logError,
+  logInfo,
+} from './util.ts'
+import { setFfmpegPath } from './ffmpeg.ts'
+import { Subscribed } from './subscribed.ts'
+import { PushReceiver } from '@eneris/push-receiver'
+import { RingIntercom } from './ring-intercom.ts'
 import JSONbig from 'json-bigint'
 
 export interface RingApiOptions extends SessionOptions {
@@ -231,11 +233,17 @@ export class RingApi extends Subscribed {
     intercoms: RingIntercom[],
   ) {
     const credentials =
+        this.restClient._internalOnly_pushNotificationCredentials?.config &&
         this.restClient._internalOnly_pushNotificationCredentials,
       pushReceiver = new PushReceiver({
+        firebase: {
+          apiKey: 'AIzaSyCv-hdFBmmdBBJadNy-TFwB-xN_H5m3Bk8',
+          projectId: 'ring-17770',
+          messagingSenderId: '876313859327', // for Ring android app.  703521446232 for ring-site
+          appId: '1:876313859327:android:e10ec6ddb3c81f39',
+        },
         credentials,
-        logLevel: 'NONE',
-        senderId: '876313859327', // for Ring android app.  703521446232 for ring-site
+        debug: false,
       }),
       devicesById: { [id: number]: RingCamera | RingIntercom | undefined } = {},
       sendToDevice = (id: number, notification: PushNotification) => {
@@ -271,6 +279,7 @@ export class RingApi extends Subscribed {
               device: {
                 metadata: {
                   ...this.restClient.baseSessionMetadata,
+                  pn_dict_version: '2.0.0',
                   pn_service: 'fcm',
                 },
                 os: 'android',
@@ -283,6 +292,18 @@ export class RingApi extends Subscribed {
         }
       }),
     )
+
+    pushReceiver.on('ON_DISCONNECT', () => {
+      pushReceiver.whenReady.catch((e) => {
+        logError(
+          'Connection to the push notification server has failed unexpectedly',
+        )
+        logError(
+          'If this happens repeatedly, verify connections to TCP/5228 are not blocked by firewall or IDS/IPS policies, and that DNS Adblock rules allow mtalk.google.com',
+        )
+        logError(e.message)
+      })
+    })
 
     try {
       await pushReceiver.connect()
@@ -302,26 +323,70 @@ export class RingApi extends Subscribed {
         return
       }
 
-      const dataJson = message.data?.gcmData as string
-
       try {
-        const notification = JSONbig({ storeAsString: true }).parse(
-          dataJson,
-        ) as PushNotification
+        const messageData = {} as any
+        // Each message field is a JSON string, so we need to parse them each individually
+        for (const p in message.data) {
+          try {
+            // If it's a JSON string, parse it into an object
+            messageData[p] = JSONbig({ storeAsString: true }).parse(
+              message.data[p] as string,
+            )
+          } catch {
+            // Otherwise just assign the value directly
+            messageData[p] = message.data[p]
+          }
+        }
 
-        if ('ding' in notification) {
-          sendToDevice(notification.ding.doorbot_id, notification)
-        } else if ('alarm_meta' in notification) {
-          // Alarm notification, such as intercom unlocked
-          sendToDevice(notification.alarm_meta.device_zid, notification)
+        const notification = messageData as PushNotification
+
+        if ('android_config' in notification) {
+          const deviceId = notification.data?.device?.id
+
+          if (deviceId) {
+            sendToDevice(deviceId, notification)
+          }
+
+          const eventCategory = notification.android_config.category
+
+          if (
+            eventCategory !== PushNotificationAction.Ding &&
+            eventCategory !== PushNotificationAction.Motion &&
+            eventCategory !== PushNotificationAction.IntercomDing
+          ) {
+            logDebug(
+              'Received v2 push notification with unknown category: ' +
+                eventCategory,
+            )
+            logDebug(JSON.stringify(message))
+          }
+        } else if (
+          'data' in notification &&
+          'gcmData' in notification.data &&
+          'alarm_meta' in notification.data.gcmData
+        ) {
+          const deviceId = notification.data.gcmData.alarm_meta.device_zid
+
+          if (deviceId) {
+            sendToDevice(deviceId, notification)
+          }
+        } else {
+          // This is not a v1 or v2 style notification, so we can't process it
+          logDebug('Received push notification in unknown format')
+          logDebug(JSON.stringify(message))
+          return
         }
       } catch (e) {
         logError(e)
       }
     })
 
-    // If we already have credentials, use them immediately
-    if (credentials) {
+    // If we already have credentials and they haven't been changed during registration, use them immediately
+    if (
+      credentials &&
+      credentials?.fcm?.token ===
+        this.restClient._internalOnly_pushNotificationCredentials?.fcm?.token
+    ) {
       onPushNotificationToken.next(credentials.fcm.token)
     }
   }

@@ -1,42 +1,44 @@
+import type { SocketTicketResponse, RingCameraKind } from './ring-types.ts'
 import {
-  CameraData,
-  CameraDeviceSettingsData,
-  CameraEventOptions,
-  CameraEventResponse,
-  CameraHealth,
+  type CameraData,
+  type CameraDeviceSettingsData,
+  type CameraEventOptions,
+  type CameraEventResponse,
+  type CameraHealth,
   DoorbellType,
-  HistoryOptions,
-  SocketTicketResponse,
-  PeriodicFootageResponse,
+  type HistoryOptions,
+  type PeriodicFootageResponse,
   PushNotificationAction,
-  PushNotification,
-  PushNotificationDing,
+  type PushNotificationDingV2,
   RingCameraModel,
-  VideoSearchResponse,
-  OnvifCameraData,
-  RingCameraKind,
-} from './ring-types'
-import { appApi, clientApi, deviceApi, RingRestClient } from './rest-client'
-import { BehaviorSubject, firstValueFrom, Subject } from 'rxjs'
+  type VideoSearchResponse,
+  type OnvifCameraData,
+  type PushNotification,
+} from './ring-types.ts'
+import type { RingRestClient } from './rest-client.ts'
+import { appApi, clientApi, deviceApi } from './rest-client.ts'
+import { BehaviorSubject, firstValueFrom, ReplaySubject, Subject } from 'rxjs'
 import {
   distinctUntilChanged,
   filter,
   map,
-  mapTo,
-  publishReplay,
-  refCount,
   share,
   startWith,
   throttleTime,
 } from 'rxjs/operators'
-import { DeepPartial, delay, logDebug, logError } from './util'
-import { Subscribed } from './subscribed'
 import {
-  StreamingConnectionOptions,
-  WebrtcConnection,
-} from './streaming/webrtc-connection'
-import { FfmpegOptions, StreamingSession } from './streaming/streaming-session'
-import { SimpleWebRtcSession } from './streaming/simple-webrtc-session'
+  buildSearchString,
+  type DeepPartial,
+  delay,
+  logDebug,
+  logError,
+} from './util.ts'
+import { Subscribed } from './subscribed.ts'
+import type { StreamingConnectionOptions } from './streaming/webrtc-connection.ts'
+import { WebrtcConnection } from './streaming/webrtc-connection.ts'
+import type { FfmpegOptions } from './streaming/streaming-session.ts'
+import { StreamingSession } from './streaming/streaming-session.ts'
+import { SimpleWebRtcSession } from './streaming/simple-webrtc-session.ts'
 
 export type AnyCameraData = CameraData | OnvifCameraData
 
@@ -81,7 +83,10 @@ export function getBatteryLevel(
 
   if (
     !levels.length ||
-    (health && !health.battery_percentage && !health.battery_present)
+    (health &&
+      !health.battery_percentage &&
+      !health.battery_present &&
+      !health.second_battery_percentage)
   ) {
     return null
   }
@@ -127,27 +132,34 @@ export class RingCamera extends Subscribed {
   hasSiren
 
   onRequestUpdate = new Subject()
-  onNewNotification = new Subject<PushNotificationDing>()
-  onActiveNotifications = new BehaviorSubject<PushNotificationDing[]>([])
+  onNewNotification = new Subject<PushNotificationDingV2>()
+  onActiveNotifications = new BehaviorSubject<PushNotificationDingV2[]>([])
   onDoorbellPressed = this.onNewNotification.pipe(
     filter(
-      (notification) => notification.action === PushNotificationAction.Ding,
+      (notification) =>
+        notification.android_config.category === PushNotificationAction.Ding,
     ),
     share(),
   )
   onMotionDetected = this.onActiveNotifications.pipe(
     map((notifications) =>
       notifications.some(
-        (notification) => notification.action === PushNotificationAction.Motion,
+        (notification) =>
+          notification.android_config.category ===
+          PushNotificationAction.Motion,
       ),
     ),
     distinctUntilChanged(),
-    publishReplay(1),
-    refCount(),
+    share({
+      connector: () => new ReplaySubject(1),
+      resetOnError: false,
+      resetOnComplete: false,
+      resetOnRefCountZero: false,
+    }),
   )
   onMotionStarted = this.onMotionDetected.pipe(
     filter((currentlyDetected) => currentlyDetected),
-    mapTo(null), // no value needed, event is what matters
+    map(() => null), // no value needed, event is what matters
     share(),
   )
   onBatteryLevel
@@ -231,14 +243,14 @@ export class RingCamera extends Subscribed {
     return this.onActiveNotifications.getValue()
   }
 
-  get latestNotification(): PushNotificationDing | undefined {
+  get latestNotification(): PushNotificationDingV2 | undefined {
     const notifications = this.activeNotifications
     return notifications[notifications.length - 1]
   }
 
   get latestNotificationSnapshotUuid() {
     const notification = this.latestNotification
-    return notification?.ding.image_uuid
+    return notification?.img?.snapshot_uuid
   }
 
   get batteryLevel() {
@@ -403,22 +415,30 @@ export class RingCamera extends Subscribed {
 
   private removeDingById(idToRemove: string) {
     const allActiveDings = this.activeNotifications,
-      otherDings = allActiveDings.filter(({ ding }) => ding.id !== idToRemove)
+      otherDings = allActiveDings.filter(
+        ({ data }) => data.event.ding.id !== idToRemove,
+      )
 
     this.onActiveNotifications.next(otherDings)
   }
 
   processPushNotification(notification: PushNotification) {
-    if (!('ding' in notification)) {
+    if (
+      !('android_config' in notification) ||
+      !('event' in notification.data) ||
+      !('ding' in (notification.data?.event ?? {}))
+    ) {
       // only process ding/motion notifications
       return
     }
 
     const activeDings = this.activeNotifications,
-      dingId = notification.ding.id
+      dingId = notification.data.event.ding.id
 
     this.onActiveNotifications.next(
-      activeDings.filter((d) => d.ding.id !== dingId).concat([notification]),
+      activeDings
+        .filter((d) => d.data.event.ding.id !== dingId)
+        .concat([notification]),
     )
     this.onNewNotification.next(notification)
 
@@ -581,14 +601,15 @@ export class RingCamera extends Subscribed {
     uuid?: string
   }) {
     const response = await this.restClient.request<Buffer>({
-        url: `https://app-snaps.ring.com/snapshots/next/${this.id}`,
-        responseType: 'buffer',
-        searchParams: {
+        url: `https://app-snaps.ring.com/snapshots/next/${
+          this.id
+        }${buildSearchString({
           'after-ms': afterMs,
           'max-wait-ms': maxWaitMs,
           extras: force ? 'force' : undefined,
           uuid: cleanSnapshotUuid(uuid),
-        },
+        })}`,
+        responseType: 'buffer',
         headers: {
           accept: 'image/jpeg',
         },

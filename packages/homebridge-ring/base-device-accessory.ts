@@ -1,9 +1,9 @@
-import { RingDevice, RingDeviceData } from 'ring-client-api'
-import { hap } from './hap'
-import { RingPlatformConfig } from './config'
-import { BaseDataAccessory } from './base-data-accessory'
-import { PlatformAccessory } from 'homebridge'
-import { ServiceType } from './base-accessory'
+import type { RingDevice, RingDeviceData } from 'ring-client-api'
+import { hap } from './hap.ts'
+import type { RingPlatformConfig } from './config.ts'
+import { BaseDataAccessory } from './base-data-accessory.ts'
+import type { PlatformAccessory } from 'homebridge'
+import type { ServiceType } from './base-accessory.ts'
 
 function getBatteryLevel({ batteryLevel, batteryStatus }: RingDeviceData) {
   if (batteryLevel !== undefined) {
@@ -100,17 +100,17 @@ export abstract class BaseDeviceAccessory extends BaseDataAccessory<RingDevice> 
     if (hasBatteryStatus(initialData)) {
       this.registerCharacteristic({
         characteristicType: Characteristic.BatteryLevel,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         getValue: getBatteryLevel,
       })
       this.registerCharacteristic({
         characteristicType: Characteristic.StatusLowBattery,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         getValue: getStatusLowBattery,
       })
       this.registerCharacteristic({
         characteristicType: Characteristic.ChargingState,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         getValue: getBatteryChargingState,
       })
     }

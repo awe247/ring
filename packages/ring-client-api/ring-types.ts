@@ -22,7 +22,6 @@ export enum RingDeviceType {
   CoAlarm = 'alarm.co',
   SmokeCoListener = 'listener.smoke-co',
   MultiLevelSwitch = 'switch.multilevel',
-  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   Fan = 'switch.multilevel',
   MultiLevelBulb = 'switch.multilevel.bulb',
   Switch = 'switch',
@@ -37,18 +36,16 @@ export enum RingDeviceType {
   Thermostat = 'temperature-control.thermostat',
   Sensor = 'sensor',
   RingNetAdapter = 'adapter.ringnet',
-  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   CodeVault = 'access-code.vault',
-  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   SecurityAccessCode = 'access-code',
   ZWaveAdapter = 'adapter.zwave',
-  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   ZWaveExtender = 'range-extender.zwave',
   PanicButton = 'security-panic',
   UnknownZWave = 'unknown.zwave',
   OnvifCamera = 'onvif_camera',
   ThirdPartyGarageDoorOpener = 'third_party_gdo',
   IntercomHandsetAudio = 'intercom_handset_audio',
+  WaterValve = 'valve.water',
 }
 
 // eslint-disable-next-line no-shadow
@@ -70,6 +67,7 @@ export enum RingDeviceCategory {
   Keypads = 33,
   Sirens = 34,
   PanicButtons = 35,
+  WaterValves = 37,
 }
 
 // eslint-disable-next-line no-shadow
@@ -108,6 +106,7 @@ export enum RingCameraKind {
   onvif_camera = 'onvif_camera',
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const RingCameraModel: { readonly [P in RingCameraKind]: string } = {
   doorbot: 'Doorbell',
   doorbell: 'Doorbell',
@@ -267,6 +266,7 @@ export interface RingDeviceData {
   motionSensorEnabled?: boolean
   // security-keypad
   brightness?: number // 0 - 1
+  valveState?: 'open' | 'closed'
 }
 
 export const deviceTypesWithVolume = [
@@ -313,6 +313,7 @@ export interface BeamBridge {
 }
 
 export type ChimeKind = 'chime' | 'chime_pro' | 'chime_v2' | 'chime_pro_v2'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const ChimeModel: { readonly [P in ChimeKind]: string } = {
   chime: 'Chime',
   chime_pro: 'Chime Pro',
@@ -562,6 +563,7 @@ export interface BaseCameraData {
     rssi_category: 'good' | string
     battery_voltage_category: 'very_good' | string
     second_battery_voltage_category: 'unknown' | string
+    second_battery_percentage?: number // 0 - 100
     second_battery_percentage_category: 'unknown' | string
     battery_save: boolean
     firmware_version_status: 'Up to Date'
@@ -1007,41 +1009,68 @@ export enum NotificationDetectionType {
 
 // eslint-disable-next-line no-shadow
 export enum PushNotificationAction {
-  Ding = 'com.ring.push.HANDLE_NEW_DING',
-  Motion = 'com.ring.push.HANDLE_NEW_motion',
-  LowBattery = 'com.ring.push.LOW_BATTERY_ALERT',
+  Ding = 'com.ring.pn.live-event.ding',
+  Motion = 'com.ring.pn.live-event.motion',
+  IntercomDing = 'com.ring.pn.live-event.intercom',
   IntercomUnlock = 'com.ring.push.INTERCOM_UNLOCK_FROM_APP',
+  AlarmModeNone = 'com.ring.push.HANDLE_NEW_SECURITY_PANEL_MODE_NONE_NOTICE',
+  AlarmModeSome = 'com.ring.push.HANDLE_NEW_SECURITY_PANEL_MODE_SOME_NOTICE',
+  AlarmSoundSiren = 'com.ring.push.HANDLE_NEW_USER_SOUND_SIREN',
+  AlarmSilenceSiren = 'com.ring.push.HANDLE_NEW_NON_ALARM_SIREN_SILENCED',
 }
 
-export interface PushNotificationDing {
-  ding: {
-    streaming_protocol: 'ring_media_server'
-    location_id: string
-    device_name: string
-    doorbot_id: number
-    e2ee_enabled: boolean
-    streaming_data_hash: string
-    device_kind: RingCameraKind
-    detection_type: NotificationDetectionType
-    human_detected?: boolean
-    id: string
-    pod_id: number
-    request_id: string
-    image_uuid: string
-    properties: {
-      active_streaming_profile: 'rms'
+export interface PushNotificationDingV2 {
+  version: '2.0.0' | string
+  android_config: {
+    category: PushNotificationAction | string
+    body: string
+  }
+  analytics: {
+    server_correlation_id: string
+    server_id: 'com.ring.pns' | string
+    subcategory: string
+    triggered_at: number
+    sent_at: number
+    referring_item_type: string
+    referring_item_id: string
+  }
+  data: {
+    device: {
+      e2ee_enabled: boolean
+      id: number
+      kind: RingCameraKind | RingDeviceType.IntercomHandsetAudio
+      name: string
+    }
+    event: {
+      ding: {
+        id: string
+        created_at: string
+        subtype: 'other_motion' | 'motion' | 'ding' | 'human' | string
+        detection_type?: NotificationDetectionType
+      }
+      eventito: {
+        type: NotificationDetectionType
+        timestamp: number
+      }
+      riid: string
       is_sidewalk: boolean
+      live_session: {
+        streaming_data_hash: string
+        active_streaming_profile: 'rms' | string
+        default_audio_route: string
+        max_duration: number
+      }
+    }
+    location: {
+      id: string
     }
   }
-  aps: {
-    alert: string
-    sound: string
+  img?: {
+    snapshot_uuid: string
   }
-  subtype: 'motion' | 'ding' | 'human' | string
-  action: PushNotificationAction | string
 }
 
-export interface PushNotificationAlarm {
+interface PushNotificationAlarm {
   aps: {
     alert: string
   }
@@ -1052,24 +1081,33 @@ export interface PushNotificationAlarm {
   }
 }
 
-export interface PushNotificationLowBattery {
+export interface PushNotificationAlarmV2 {
   data: {
-    device_name: string
-    doorbot_id: number
-    battery_level: number // 29
-    device_kind: RingDeviceType
-    timestamp_epoch_ms: number
+    gcmData: PushNotificationAlarm
   }
+}
+
+interface PushNotificationIntercomUnlock {
   aps: {
-    title: string // 'Battery at 29% - ABC needs charging.'
+    alert: string
   }
-  action: PushNotificationAction.LowBattery
+  action: PushNotificationAction.IntercomUnlock
+  alarm_meta: {
+    device_zid: number
+    location_id: string
+  }
+}
+
+export interface PushNotificationIntercomUnlockV2 {
+  data: {
+    gcmData: PushNotificationIntercomUnlock
+  }
 }
 
 export type PushNotification =
-  | PushNotificationDing
-  | PushNotificationAlarm
-  | PushNotificationLowBattery
+  | PushNotificationDingV2
+  | PushNotificationAlarmV2
+  | PushNotificationIntercomUnlockV2
 
 export interface SocketTicketResponse {
   ticket: string
@@ -1121,7 +1159,7 @@ export interface ProfileResponse {
     account_type: 'ring' | string
   }
 }
-export interface SessionResponse extends ProfileResponse {}
+export type SessionResponse = ProfileResponse
 
 export interface AccountMonitoringStatus {
   accountUuid: string

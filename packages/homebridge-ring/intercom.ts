@@ -1,8 +1,8 @@
-import { RingIntercom } from 'ring-client-api'
-import { hap } from './hap'
-import { RingPlatformConfig } from './config'
-import { PlatformAccessory } from 'homebridge'
-import { BaseDataAccessory } from './base-data-accessory'
+import type { RingIntercom } from 'ring-client-api'
+import { hap } from './hap.ts'
+import type { RingPlatformConfig } from './config.ts'
+import type { PlatformAccessory } from 'homebridge'
+import { BaseDataAccessory } from './base-data-accessory.ts'
 import { logError, logInfo } from 'ring-client-api/util'
 import { map, throttleTime } from 'rxjs/operators'
 
@@ -116,7 +116,7 @@ export class Intercom extends BaseDataAccessory<RingIntercom> {
     if (device.batteryLevel !== null) {
       this.registerObservableCharacteristic({
         characteristicType: Characteristic.BatteryLevel,
-        serviceType: Service.BatteryService,
+        serviceType: Service.Battery,
         onValue: device.onBatteryLevel.pipe(
           map((batteryLevel) => {
             return batteryLevel === null ? 100 : batteryLevel

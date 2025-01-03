@@ -1,26 +1,28 @@
-import { RingCamera } from 'ring-client-api'
-import { hap } from './hap'
+import type { RingCamera } from 'ring-client-api'
+import { hap } from './hap.ts'
+import type { SrtpOptions } from '@homebridge/camera-utils'
 import {
   doesFfmpegSupportCodec,
   generateSrtpOptions,
   ReturnAudioTranscoder,
   RtpSplitter,
-  SrtpOptions,
 } from '@homebridge/camera-utils'
-import {
-  AudioStreamingCodecType,
-  AudioStreamingSamplerate,
+import type {
   CameraStreamingDelegate,
-  H264Level,
-  H264Profile,
   PrepareStreamCallback,
   PrepareStreamRequest,
   SnapshotRequest,
   SnapshotRequestCallback,
-  SRTPCryptoSuites,
   StartStreamRequest,
   StreamingRequest,
   StreamRequestCallback,
+} from 'homebridge'
+import {
+  AudioStreamingCodecType,
+  AudioStreamingSamplerate,
+  H264Level,
+  H264Profile,
+  SRTPCryptoSuites,
 } from 'homebridge'
 import { logDebug, logError, logInfo } from 'ring-client-api/util'
 import { debounceTime, delay, take } from 'rxjs/operators'
@@ -35,12 +37,15 @@ import {
   SrtpSession,
   SrtcpSession,
 } from 'werift'
-import type { StreamingSession } from 'ring-client-api/lib/streaming/streaming-session'
-import { OpusRepacketizer } from './opus-repacketizer'
+import type { StreamingSession } from 'ring-client-api/streaming/streaming-session'
+import { OpusRepacketizer } from './opus-repacketizer.ts'
+import path from 'node:path'
 
-const readFileAsync = promisify(readFile),
-  cameraOfflinePath = require.resolve('../media/camera-offline.jpg'),
-  snapshotsBlockedPath = require.resolve('../media/snapshots-blocked.jpg')
+const __dirname = new URL('.', import.meta.url).pathname,
+  mediaDirectory = path.join(__dirname.replace('/lib', ''), 'media'),
+  readFileAsync = promisify(readFile),
+  cameraOfflinePath = path.join(mediaDirectory, 'camera-offline.jpg'),
+  snapshotsBlockedPath = path.join(mediaDirectory, 'snapshots-blocked.jpg')
 
 function getDurationSeconds(start: number) {
   return (Date.now() - start) / 1000
@@ -326,7 +331,7 @@ class StreamingSessionWrapper {
         try {
           const rtp: RtpPacket | undefined = RtpPacket.deSerialize(message)
           this.streamingSession.sendAudioPacket(rtp)
-        } catch (_) {
+        } catch {
           // deSerialize will sometimes fail, but the errors can be ignored
         }
 
@@ -389,61 +394,63 @@ class StreamingSessionWrapper {
 }
 
 export class CameraSource implements CameraStreamingDelegate {
-  public controller = new hap.CameraController({
-    cameraStreamCount: 10,
-    delegate: this,
-    streamingOptions: {
-      supportedCryptoSuites: [SRTPCryptoSuites.AES_CM_128_HMAC_SHA1_80],
-      video: {
-        resolutions: [
-          [1280, 720, 30],
-          [1024, 768, 30],
-          [640, 480, 30],
-          [640, 360, 30],
-          [480, 360, 30],
-          [480, 270, 30],
-          [320, 240, 30],
-          [320, 240, 15], // Apple Watch requires this configuration
-          [320, 180, 30],
-        ],
-        codec: {
-          profiles: [H264Profile.BASELINE],
-          levels: [H264Level.LEVEL3_1],
-        },
-      },
-      audio: {
-        codecs: this.useOpus
-          ? [
-              {
-                type: AudioStreamingCodecType.OPUS,
-                // required by watch
-                samplerate: AudioStreamingSamplerate.KHZ_8,
-              },
-              {
-                type: AudioStreamingCodecType.OPUS,
-                samplerate: AudioStreamingSamplerate.KHZ_16,
-              },
-              {
-                type: AudioStreamingCodecType.OPUS,
-                samplerate: AudioStreamingSamplerate.KHZ_24,
-              },
-            ]
-          : [
-              {
-                type: AudioStreamingCodecType.AAC_ELD,
-                samplerate: AudioStreamingSamplerate.KHZ_16,
-              },
-            ],
-      },
-    },
-  })
+  public controller
   private sessions: { [sessionKey: string]: StreamingSessionWrapper } = {}
   private cachedSnapshot?: Buffer
 
   constructor(
     private ringCamera: RingCamera,
     private useOpus = false,
-  ) {}
+  ) {
+    this.controller = new hap.CameraController({
+      cameraStreamCount: 10,
+      delegate: this,
+      streamingOptions: {
+        supportedCryptoSuites: [SRTPCryptoSuites.AES_CM_128_HMAC_SHA1_80],
+        video: {
+          resolutions: [
+            [1280, 720, 30],
+            [1024, 768, 30],
+            [640, 480, 30],
+            [640, 360, 30],
+            [480, 360, 30],
+            [480, 270, 30],
+            [320, 240, 30],
+            [320, 240, 15], // Apple Watch requires this configuration
+            [320, 180, 30],
+          ],
+          codec: {
+            profiles: [H264Profile.BASELINE],
+            levels: [H264Level.LEVEL3_1],
+          },
+        },
+        audio: {
+          codecs: this.useOpus
+            ? [
+                {
+                  type: AudioStreamingCodecType.OPUS,
+                  // required by watch
+                  samplerate: AudioStreamingSamplerate.KHZ_8,
+                },
+                {
+                  type: AudioStreamingCodecType.OPUS,
+                  samplerate: AudioStreamingSamplerate.KHZ_16,
+                },
+                {
+                  type: AudioStreamingCodecType.OPUS,
+                  samplerate: AudioStreamingSamplerate.KHZ_24,
+                },
+              ]
+            : [
+                {
+                  type: AudioStreamingCodecType.AAC_ELD,
+                  samplerate: AudioStreamingSamplerate.KHZ_16,
+                },
+              ],
+        },
+      },
+    })
+  }
 
   private previousLoadSnapshotPromise?: Promise<any>
   async loadSnapshot(imageUuid?: string) {
@@ -457,7 +464,7 @@ export class CameraSource implements CameraStreamingDelegate {
 
     try {
       await this.previousLoadSnapshotPromise
-    } catch (_) {
+    } catch {
       // ignore errors
     } finally {
       // clear so another request can be made

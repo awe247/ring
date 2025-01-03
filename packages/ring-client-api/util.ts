@@ -1,9 +1,9 @@
 import debug from 'debug'
-import { red } from 'colors'
+import colors from 'colors'
 import { createInterface } from 'readline'
 import { v4 as generateRandomUuid, v5 as generateUuidFromNamespace } from 'uuid'
 import { uuid as getSystemUuid } from 'systeminformation'
-import pushReceiverLogger from '@eneris/push-receiver/dist/utils/logger'
+import pushReceiverLogger from '@eneris/push-receiver/dist/utils/logger.js'
 
 const debugLogger = debug('ring'),
   uuidNamespace = 'e53ffdc0-e91d-4ce1-bec2-df939d94739d'
@@ -18,7 +18,7 @@ let logger: Logger = {
       debugLogger(message)
     },
     logError(message) {
-      debugLogger(red(message))
+      debugLogger(colors.red(message))
     },
   },
   debugEnabled = false
@@ -161,7 +161,10 @@ function logPushReceiver(...args: any) {
   logDebug('[Push Receiver]')
   logDebug(args[0])
 }
-pushReceiverLogger.error = logPushReceiver
+
+const pushReceiverLoggerDefault =
+  pushReceiverLogger.default || pushReceiverLogger // fix for vitest
+pushReceiverLoggerDefault.error = logPushReceiver
 
 export function fromBase64(encodedInput: string) {
   const buff = Buffer.from(encodedInput, 'base64')
@@ -171,4 +174,14 @@ export function fromBase64(encodedInput: string) {
 export function toBase64(input: string) {
   const buff = Buffer.from(input)
   return buff.toString('base64')
+}
+
+export function buildSearchString(search: Record<string, any>) {
+  return (
+    '?' +
+    Object.entries(search)
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&')
+  )
 }

@@ -1,17 +1,17 @@
 import type { Location, LocationMode } from 'ring-client-api'
 import { distinctUntilChanged } from 'rxjs/operators'
-import { hap } from './hap'
-import { RingPlatformConfig } from './config'
+import { hap } from './hap.ts'
+import type { RingPlatformConfig } from './config.ts'
 import { logError, logInfo } from 'ring-client-api/util'
-import { BaseAccessory } from './base-accessory'
+import { BaseAccessory } from './base-accessory.ts'
 import { firstValueFrom, of } from 'rxjs'
-import {
+import type {
   PlatformAccessory,
-  CharacteristicEventTypes,
   CharacteristicGetCallback,
   CharacteristicSetCallback,
   CharacteristicValue,
 } from 'homebridge'
+import { CharacteristicEventTypes } from 'homebridge'
 
 function getStateFromMode(mode: LocationMode) {
   const {
@@ -32,7 +32,7 @@ function getStateFromMode(mode: LocationMode) {
 
 export class LocationModeSwitch extends BaseAccessory<Location> {
   private targetState: any
-  public device = this.location // for use in BaseAccessory
+  public device
 
   constructor(
     private readonly location: Location,
@@ -40,6 +40,8 @@ export class LocationModeSwitch extends BaseAccessory<Location> {
     public readonly config: RingPlatformConfig,
   ) {
     super()
+    this.device = location // for use in BaseAccessory
+
     const {
         Characteristic,
         Service: { SecuritySystem, AccessoryInformation },

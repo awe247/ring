@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
-import { RingApi } from './api'
-import { acquireRefreshToken } from './refresh-token'
-import { mapAsync } from './util'
+import { RingApi } from './api.ts'
+import { acquireRefreshToken } from './refresh-token.ts'
+import { mapAsync } from './util.ts'
 
 const sensitiveFields = [
   'id',
@@ -39,12 +39,12 @@ function stripSensitiveFields(input: any) {
         const data = input[key]
 
         if (key.length === 36) {
-          input[key.substr(0, 13) + '-uuid'] = data
+          input[key.slice(0, 13) + '-uuid'] = data
           delete input[key]
         }
 
         if (typeof data === 'string' && data.length === 36) {
-          input[key] = data.substr(0, 13) + '-uuid'
+          input[key] = data.slice(0, 13) + '-uuid'
         }
 
         stripSensitiveFields(data)

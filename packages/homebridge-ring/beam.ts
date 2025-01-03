@@ -1,14 +1,14 @@
-import { RingDevice, RingDeviceType } from 'ring-client-api'
-import { hap } from './hap'
-import { RingPlatformConfig } from './config'
-import { BaseDeviceAccessory } from './base-device-accessory'
-import { PlatformAccessory } from 'homebridge'
+import type { RingDevice } from 'ring-client-api'
+import { RingDeviceType } from 'ring-client-api'
+import { hap } from './hap.ts'
+import type { RingPlatformConfig } from './config.ts'
+import { BaseDeviceAccessory } from './base-device-accessory.ts'
+import type { PlatformAccessory } from 'homebridge'
 import { logInfo } from 'ring-client-api/util'
 
 export class Beam extends BaseDeviceAccessory {
-  isLightGroup =
-    this.device.data.deviceType === RingDeviceType.BeamsLightGroupSwitch
-  groupId = this.device.data.groupId
+  private isLightGroup
+  private groupId
 
   constructor(
     public readonly device: RingDevice,
@@ -16,6 +16,10 @@ export class Beam extends BaseDeviceAccessory {
     public readonly config: RingPlatformConfig,
   ) {
     super()
+
+    this.isLightGroup =
+      this.device.data.deviceType === RingDeviceType.BeamsLightGroupSwitch
+    this.groupId = this.device.data.groupId
 
     const { Characteristic, Service } = hap,
       { MotionSensor } = Service,
