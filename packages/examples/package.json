@@ -8,9 +8,9 @@
     "build": "tsc --noEmit"
   },
   "devDependencies": {
-    "dotenv": "16.4.5",
+    "dotenv": "16.5.0",
     "eslint-config-shared": "*",
-    "ring-client-api": "13.2.1",
+    "ring-client-api": "14.0.1",
     "tsconfig": "*"
   }
 }

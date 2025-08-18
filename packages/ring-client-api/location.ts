@@ -1,6 +1,5 @@
-import type { Socket as SocketIOSocket } from 'socket.io-client'
-import { connect as connectSocketIo } from 'socket.io-client'
 import type { Observable } from 'rxjs'
+import { WebSocket } from 'undici'
 import {
   BehaviorSubject,
   firstValueFrom,
@@ -122,7 +121,7 @@ export class Location extends Subscribed {
   private onLocationModeRequested = new Subject()
   reconnecting = false
   private disconnected = false
-  connectionPromise?: Promise<typeof SocketIOSocket>
+  connectionPromise?: Promise<WebSocket>
   securityPanel?: RingDevice
   assets?: TicketAsset[]
   receivedAssetDeviceLists: string[] = []
@@ -130,20 +129,33 @@ export class Location extends Subscribed {
   hasHubs
   hasAlarmBaseStation
 
+  public readonly locationDetails
+  public readonly cameras
+  public readonly chimes
+  public readonly intercoms
+  public readonly options
+  private restClient
+
   constructor(
-    public readonly locationDetails: UserLocation,
-    public readonly cameras: RingCamera[],
-    public readonly chimes: RingChime[],
-    public readonly intercoms: RingIntercom[],
-    public readonly options: {
+    locationDetails: UserLocation,
+    cameras: RingCamera[],
+    chimes: RingChime[],
+    intercoms: RingIntercom[],
+    options: {
       hasHubs: boolean
       hasAlarmBaseStation: boolean
       locationModePollingSeconds?: number
     },
-    private restClient: RingRestClient,
+    restClient: RingRestClient,
   ) {
     super()
 
+    this.locationDetails = locationDetails
+    this.cameras = cameras
+    this.chimes = chimes
+    this.intercoms = intercoms
+    this.options = options
+    this.restClient = restClient
     this.hasHubs = this.options.hasHubs
     this.hasAlarmBaseStation = this.options.hasAlarmBaseStation
 
@@ -164,7 +176,6 @@ export class Location extends Subscribed {
 
           if (connectionStatus === 'online') {
             if (assetWasOffline) {
-              // eslint-disable-next-line @typescript-eslint/no-empty-function
               this.requestList(deviceListMessageType, assetUuid).catch(() => {})
               this.offlineAssets = this.offlineAssets.filter(
                 (id) => id !== assetUuid,
@@ -204,7 +215,7 @@ export class Location extends Subscribed {
     return this.locationDetails.name
   }
 
-  async createConnection(): Promise<typeof SocketIOSocket> {
+  async createConnection(): Promise<WebSocket> {
     if (this.disconnected) {
       return Promise.resolve({ disconnected: true } as any)
     }
@@ -223,7 +234,9 @@ export class Location extends Subscribed {
         subscriptionTopics: string[]
         ticket: string
       }>({
-        url: appApi('clap/tickets?locationID=' + this.id),
+        url: appApi(
+          `clap/tickets?locationID=${this.id}&enableExtendedEmergencyCellUsage=true&requestedTransport=ws`,
+        ),
       }),
       supportedAssets = assets.filter(isWebSocketSupportedAsset)
     this.assets = supportedAssets
@@ -236,10 +249,8 @@ export class Location extends Subscribed {
       throw new Error(errorMessage)
     }
 
-    const connection = connectSocketIo(
-        `wss://${host}/?authcode=${ticket}&ack=false&EIO=3`,
-        { transports: ['websocket'] },
-      ),
+    const url = `wss://${host}/ws?authcode=${ticket}&ack=false`,
+      socket = new WebSocket(url),
       reconnect = () => {
         if (this.reconnecting && this.connectionPromise) {
           return this.connectionPromise
@@ -252,36 +263,58 @@ export class Location extends Subscribed {
         }
 
         this.reconnecting = true
-        connection.close()
+        socket.close()
         return (this.connectionPromise = delay(1000).then(() => {
           return this.createConnection()
         }))
       }
 
-    this.reconnecting = false
-    connection.on('DataUpdate', (message: SocketIoMessage) => {
-      if (message.datatype === 'HubDisconnectionEventType') {
-        logInfo('Location connection told to reconnect')
-        return reconnect()
-      }
+    socket.addEventListener('message', (event) => {
+      try {
+        const { msg: message, channel } = JSON.parse(event.data) as {
+          msg: SocketIoMessage
+          channel: string
+        }
+        this.onMessage.next(message)
 
-      this.onDataUpdate.next(message)
+        if (message.datatype === 'HubDisconnectionEventType') {
+          logInfo('Location connection told to reconnect')
+          return reconnect()
+        }
+
+        if (channel === 'DataUpdate') {
+          this.onDataUpdate.next(message)
+        }
+      } catch (e) {
+        logError('Error parsing message from server: ' + event.data)
+      }
     })
-    connection.on('message', (message: SocketIoMessage) =>
-      this.onMessage.next(message),
-    )
-    connection.on('error', reconnect)
-    connection.on('disconnect', reconnect)
-    return new Promise<typeof SocketIOSocket>((resolve, reject) => {
-      connection.once('connect', () => {
-        resolve(connection)
-        this.onConnected.next(true)
-        logInfo('Ring connected to socket.io server')
-        assets.forEach((asset) =>
-          this.requestList(deviceListMessageType, asset.uuid),
-        )
-      })
-      connection.once('error', reject)
+
+    socket.addEventListener('error', (error) => {
+      logDebug('WebSocket error: ' + error)
+      return reconnect()
+    })
+
+    socket.addEventListener('close', (event) => {
+      logDebug(`WebSocket connection closed: ${event.code}, ${event.reason}`)
+      return reconnect()
+    })
+
+    this.reconnecting = false
+    return new Promise<WebSocket>((resolve, reject) => {
+      socket.addEventListener(
+        'open',
+        () => {
+          resolve(socket)
+          this.onConnected.next(true)
+          logInfo('Ring connected to socket.io server')
+          assets.forEach((asset) =>
+            this.requestList(deviceListMessageType, asset.uuid),
+          )
+        },
+        { once: true },
+      )
+      socket.addEventListener('error', reject, { once: true })
     }).catch(reconnect)
   }
 
@@ -308,7 +341,12 @@ export class Location extends Subscribed {
   }) {
     const connection = await this.getConnection()
     message.seq = this.seq++
-    connection.emit('message', message)
+    connection.send(
+      JSON.stringify({
+        channel: 'message',
+        msg: message,
+      }),
+    )
   }
 
   async sendCommandToSecurityPanel(

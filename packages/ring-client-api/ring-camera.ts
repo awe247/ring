@@ -1,4 +1,5 @@
-import type { SocketTicketResponse, RingCameraKind } from './ring-types.ts'
+import type { SocketTicketResponse } from './ring-types.ts'
+import { RingCameraKind } from './ring-types.ts'
 import {
   type CameraData,
   type CameraDeviceSettingsData,
@@ -123,6 +124,14 @@ export function cleanSnapshotUuid(uuid?: string | null) {
   return uuid.replace(/:.*$/, '')
 }
 
+const wiredModelsWithNoSnapshotDuringRecording = new Set<RingCameraKind>([
+    RingCameraKind.doorbell_graham_cracker,
+  ]),
+  enabledDoorbellTypes = new Set<DoorbellType>([
+    DoorbellType.Mechanical,
+    DoorbellType.Digital,
+  ])
+
 export class RingCamera extends Subscribed {
   id
   deviceType
@@ -164,15 +173,23 @@ export class RingCamera extends Subscribed {
   )
   onBatteryLevel
   onInHomeDoorbellStatus
+  private initialData
+  public isDoorbot
+  private restClient
+  private avoidSnapshotBatteryDrain
 
   constructor(
-    private initialData: AnyCameraData,
-    public isDoorbot: boolean,
-    private restClient: RingRestClient,
-    private avoidSnapshotBatteryDrain: boolean,
+    initialData: AnyCameraData,
+    isDoorbot: boolean,
+    restClient: RingRestClient,
+    avoidSnapshotBatteryDrain: boolean,
   ) {
     super()
 
+    this.initialData = initialData
+    this.isDoorbot = isDoorbot
+    this.restClient = restClient
+    this.avoidSnapshotBatteryDrain = avoidSnapshotBatteryDrain
     this.id = this.initialData.id
     this.deviceType = this.initialData.kind
     this.model =
@@ -279,6 +296,15 @@ export class RingCamera extends Subscribed {
     return this.hasBattery && this.data.settings.power_mode !== 'wired'
   }
 
+  get canTakeSnapshotWhileRecording() {
+    return (
+      !this.operatingOnBattery &&
+      !wiredModelsWithNoSnapshotDuringRecording.has(
+        this.data.kind as RingCameraKind,
+      )
+    )
+  }
+
   get isOffline() {
     return this.data.alerts.connection === 'offline'
   }
@@ -292,12 +318,7 @@ export class RingCamera extends Subscribed {
 
     return (
       this.isDoorbot &&
-      Boolean(
-        chime_settings &&
-          [DoorbellType.Mechanical, DoorbellType.Digital].includes(
-            chime_settings.type,
-          ),
-      )
+      Boolean(chime_settings && enabledDoorbellTypes.has(chime_settings.type))
     )
   }
 
@@ -568,7 +589,7 @@ export class RingCamera extends Subscribed {
             },
       ),
       delay(maxSnapshotRefreshSeconds * 1000).then(() => {
-        const extraMessageForBatteryCam = this.operatingOnBattery
+        const extraMessageForBatteryCam = !this.canTakeSnapshotWhileRecording
           ? '.  This is normal behavior since this camera is unable to capture snapshots while streaming'
           : ''
         throw new Error(
